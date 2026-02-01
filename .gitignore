@@ -1,22 +1,17 @@
-# Claude Code
-.claude/
-
-# macOS
+# Local development
 .DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Editor files
+*.log
 .vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
+
+# Cloudflare
+.wrangler/
+wrangler.toml
+
+# Testing
+node_modules/
+.cache/
 
 # Environment
 .env
 .env.local
-
-# Logs
-*.log
-npm-debug.log*
