@@ -8,6 +8,10 @@ A simple, plain-text browser diagnostic tool for troubleshooting web access issu
 - **Screen & Display**: Resolution, viewport size, color depth, pixel ratio, orientation
 - **Browser Capabilities**: JavaScript, cookies, storage, WebGL, service workers, and more
 - **Network Information**: Online status, connection type, protocol, hostname, public IP
+- **DNS Resolver Connectivity**: Tests connectivity to Cloudflare DNS resolvers (1.1.1.1, IPv4/IPv6)
+- **DNS Protocol & Encryption**: Detects DNS-over-HTTPS (DoH), DNS-over-WARP status
+- **DNS Network Path**: Data center location, TLS version, HTTP version, WARP/Gateway status
+- **DNS Performance**: DoH query timing and response validation
 - **Performance Metrics**: Page load time, DNS lookup, TCP connection, TTFB, DOM load
 - **Security Context**: Protocol, secure context status, referrer policy
 - **Additional Details**: Current URL, referrer, timezone, encoding
@@ -48,7 +52,12 @@ Platform: [value]
 
 ## Privacy
 
-All diagnostic checks are performed locally in your browser. The only external request made is to `api.ipify.org` to retrieve your public IP address. No data is sent to any other servers.
+All diagnostic checks are performed locally in your browser. External requests are made to:
+- `api.ipify.org` - To retrieve your public IP address
+- `1.1.1.1` and `1.0.0.1` (Cloudflare DNS) - To test DNS resolver connectivity
+- `cloudflare-dns.com` - To test DNS-over-HTTPS (DoH) performance
+
+All tests are read-only connectivity checks. No personal data or browsing history is sent to any servers.
 
 ## License
 

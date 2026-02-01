@@ -22,16 +22,17 @@ The entire application is contained in `index.html` with three main sections:
    - Two buttons: Copy All Data and Refresh
    - `<pre id="diagnosticContent">` - Main diagnostic output area
 
-3. **JavaScript Diagnostic Engine** (lines 43-396)
-   - Data collection functions (7 categories)
+3. **JavaScript Diagnostic Engine** (lines 43-520)
+   - Data collection functions (7 base + 4 DNS categories)
    - Plain text rendering system
-   - Async IP address fetching
+   - Async IP address and DNS diagnostics fetching
    - Clipboard copy functionality
 
 ### Data Collection Functions
 
 Each function returns an object with key-value pairs of diagnostic information:
 
+**Base Diagnostics (Synchronous):**
 - `getBrowserInfo()` - User agent, browser detection, platform, languages, cookies
 - `getScreenInfo()` - Screen resolution, viewport, color depth, pixel ratio, orientation
 - `getCapabilities()` - Feature detection: storage APIs, WebGL, service workers, WebAssembly
@@ -39,7 +40,15 @@ Each function returns an object with key-value pairs of diagnostic information:
 - `getPerformanceInfo()` - Page load metrics, DNS, TCP, TLS, TTFB, DOM load times
 - `getSecurityInfo()` - Protocol, secure context, cross-origin isolation, referrer policy
 - `getAdditionalDetails()` - URL, referrer, document mode, timezone, API support
-- `getIPAddress()` - Async function fetching public IP from api.ipify.org
+
+**Async Diagnostics:**
+- `getIPAddress()` - Fetches public IP from api.ipify.org
+- `getDNSResolverInfo()` - Tests connectivity to Cloudflare DNS resolvers (1.1.1.1, 1.0.0.1, IPv6)
+- `testDNSPerformance()` - Measures DoH query timing and validates functionality
+
+**DNS Helper Functions:**
+- `parseCloudflareTrace()` - Extracts data center, TLS, HTTP version from trace data
+- `detectDNSEncryption()` - Infers DoH/DoT/WARP status from connectivity and trace data
 
 ### Plain Text Rendering System
 
@@ -72,44 +81,58 @@ When modifying the tool, maintain the plain text output format:
 ### Adding New Diagnostic Sections
 
 1. Create a new data collection function returning an object
-2. Add to `diagnosticData` object in `renderAllInfo()` (lines 308-316)
+2. Add to `diagnosticData` object in `renderAllInfo()` (lines 435-443 for sync, lines 459-466 for async)
 3. The rendering system will automatically format it as plain text
 
 ### Modifying Display Format
 
-- Header format: `updateTimestamp()` (lines 285-292)
-- Section format: `createInfoSection()` (lines 294-303)
+- Header format: `updateTimestamp()` (lines 412-419)
+- Section format: `createInfoSection()` (lines 421-430)
 - Value formatting: `formatValue()` (lines 47-58)
 
 ### Async Data Updates
 
-The IP address demonstrates the pattern for async data:
-1. Render initial data without async values
-2. Fetch async data (lines 327-328)
-3. Update `diagnosticData` object
-4. Re-render all sections with updated data (lines 330-335)
+Multiple async diagnostics run in parallel using `Promise.all()`:
+1. Render initial synchronous data without async values
+2. Fetch all async data in parallel (IP + DNS tests) using Promise.all()
+3. Update `diagnosticData` object with async results
+4. Add new DNS diagnostic sections to `diagnosticData`
+5. Re-render all sections with complete data
+
+The pattern uses 5-second timeouts with AbortController to prevent long waits on blocked connections.
 
 ## Testing
 
 Open `index.html` directly in a browser (no build step required).
 
 **Test checklist:**
-- All 7 diagnostic sections display correctly
+- All 11 diagnostic sections display correctly (7 base + 4 DNS)
 - Plain text formatting preserved (no HTML artifacts)
 - Copy button copies same format as displayed
 - Refresh button updates all data including timestamp
-- IP address loads asynchronously and updates display
+- IP address and DNS diagnostics load asynchronously and update display
+- DNS sections show connectivity status, encryption detection, network path, and performance
 - Print preview hides buttons but shows all diagnostic text
+- Timeouts work correctly on slow/blocked connections
 
 ## External Dependencies
 
 - **api.ipify.org** - Free IP address lookup API (read-only, no authentication)
+- **1.1.1.1/cdn-cgi/trace** - Cloudflare trace API for DNS resolver connectivity testing
+- **1.0.0.1/cdn-cgi/trace** - Cloudflare secondary resolver trace endpoint
+- **[2606:4700:4700::1111]/cdn-cgi/trace** - Cloudflare IPv6 resolver (primary)
+- **[2606:4700:4700::1001]/cdn-cgi/trace** - Cloudflare IPv6 resolver (secondary)
+- **cloudflare-dns.com/dns-query** - Cloudflare DoH JSON API for performance testing
 - No build tools, frameworks, or npm packages required
 
 ## Privacy & Security
 
 - All diagnostics run client-side in the browser
-- Only external request: GET to api.ipify.org for public IP address
-- No data is sent to any servers
+- External requests:
+  - GET to api.ipify.org for public IP address
+  - GET to 1.1.1.1/1.0.0.1/IPv6 endpoints for DNS resolver connectivity tests
+  - GET to cloudflare-dns.com for DoH performance test (queries cloudflare.com)
+- No personal data or browsing history is transmitted
 - No cookies or tracking
 - Safe to share output (contains no secrets, only browser/network metadata)
+- All DNS tests use 5-second timeouts to prevent long waits

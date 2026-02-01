@@ -282,6 +282,133 @@
             }
         }
 
+        // Get DNS resolver connectivity information
+        async function getDNSResolverInfo() {
+            const resolvers = [
+                { name: '1.1.1.1 (IPv4)', url: 'https://1.1.1.1/cdn-cgi/trace' },
+                { name: '1.0.0.1 (IPv4)', url: 'https://1.0.0.1/cdn-cgi/trace' },
+                { name: '2606:4700:4700::1111 (IPv6)', url: 'https://[2606:4700:4700::1111]/cdn-cgi/trace' },
+                { name: '2606:4700:4700::1001 (IPv6)', url: 'https://[2606:4700:4700::1001]/cdn-cgi/trace' }
+            ];
+
+            const results = {};
+            const promises = resolvers.map(async (resolver) => {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    const response = await fetch(resolver.url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        results[resolver.name] = 'Connected';
+                        return response.text();
+                    } else {
+                        results[resolver.name] = `Error ${response.status}`;
+                        return null;
+                    }
+                } catch (error) {
+                    results[resolver.name] = error.name === 'AbortError' ? 'Timeout' : 'Not Connected';
+                    return null;
+                }
+            });
+
+            const traces = await Promise.all(promises);
+            return { results, traceData: traces.find(t => t !== null) };
+        }
+
+        // Parse Cloudflare trace data
+        function parseCloudflareTrace(traceText) {
+            if (!traceText) return {};
+
+            const data = {};
+            traceText.split('\n').forEach(line => {
+                const [key, value] = line.split('=');
+                if (key && value) data[key.trim()] = value.trim();
+            });
+
+            return {
+                'Data Center Location': data.colo || 'Unknown',
+                'TLS Version': data.tls || 'Unknown',
+                'HTTP Version': data.http || 'Unknown',
+                'WARP Status': data.warp === 'on' ? 'Active' : 'Not Active',
+                'Gateway Status': data.gateway === 'on' ? 'Active' : 'Not Active'
+            };
+        }
+
+        // Detect DNS encryption status
+        function detectDNSEncryption(traceText, connectivityResults) {
+            const trace = {};
+            if (traceText) {
+                traceText.split('\n').forEach(line => {
+                    const [key, value] = line.split('=');
+                    if (key && value) trace[key.trim()] = value.trim();
+                });
+            }
+
+            const warpActive = trace.warp === 'on';
+            const gatewayActive = trace.gateway === 'on';
+            const cloudflareConnected = connectivityResults['1.1.1.1 (IPv4)'] === 'Connected';
+
+            let dohStatus = 'Unknown';
+            if (warpActive) {
+                dohStatus = 'Using DNS-over-WARP';
+            } else if (gatewayActive) {
+                dohStatus = 'Using Cloudflare Gateway';
+            } else if (cloudflareConnected) {
+                dohStatus = 'Likely Using DoH (inferred)';
+            } else {
+                dohStatus = 'Not Detected';
+            }
+
+            return {
+                'DNS-over-HTTPS (DoH)': dohStatus,
+                'DNS-over-TLS (DoT)': 'Not Detectable in Browser',
+                'DNS-over-WARP': warpActive ? 'Active' : 'Not Active'
+            };
+        }
+
+        // Test DNS performance using DoH
+        async function testDNSPerformance() {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const startTime = performance.now();
+
+                const response = await fetch(
+                    'https://cloudflare-dns.com/dns-query?name=cloudflare.com&type=A',
+                    {
+                        headers: { 'Accept': 'application/dns-json' },
+                        signal: controller.signal
+                    }
+                );
+
+                clearTimeout(timeoutId);
+                const endTime = performance.now();
+                const queryTime = Math.round(endTime - startTime);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        'DoH Query Time': `${queryTime} ms`,
+                        'DoH Status': data.Status === 0 ? 'Working' : `Error (Status ${data.Status})`,
+                        'Answers Received': data.Answer?.length || 0
+                    };
+                } else {
+                    return {
+                        'DoH Query Time': 'Error',
+                        'DoH Status': `HTTP ${response.status}`,
+                        'Answers Received': 'N/A'
+                    };
+                }
+            } catch (error) {
+                return {
+                    'DoH Query Time': error.name === 'AbortError' ? 'Timeout (>5s)' : 'Error',
+                    'DoH Status': error.message || 'Failed',
+                    'Answers Received': 'N/A'
+                };
+            }
+        }
+
         // Update header with timestamp
         function updateTimestamp() {
             const now = new Date();
@@ -320,14 +447,25 @@
             for (const [section, data] of Object.entries(diagnosticData)) {
                 text += createInfoSection(section, data);
             }
-
             document.getElementById('diagnosticContent').textContent = text;
 
-            // Fetch IP address asynchronously and update
-            const ipAddress = await getIPAddress();
+            // Fetch all async data in parallel
+            const [ipAddress, dnsInfo, dnsPerf] = await Promise.all([
+                getIPAddress(),
+                getDNSResolverInfo(),
+                testDNSPerformance()
+            ]);
+
+            // Update Network Information with IP
             diagnosticData['Network Information']['Public IP Address'] = ipAddress;
 
-            // Re-render all sections with IP included
+            // Add DNS sections
+            diagnosticData['DNS Resolver Connectivity'] = dnsInfo.results;
+            diagnosticData['DNS Protocol & Encryption'] = detectDNSEncryption(dnsInfo.traceData, dnsInfo.results);
+            diagnosticData['DNS Network Path'] = parseCloudflareTrace(dnsInfo.traceData);
+            diagnosticData['DNS Performance'] = dnsPerf;
+
+            // Re-render all sections with DNS data
             text = '';
             for (const [section, data] of Object.entries(diagnosticData)) {
                 text += createInfoSection(section, data);
