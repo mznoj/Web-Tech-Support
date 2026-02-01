@@ -36,6 +36,8 @@
         <div style="margin: 10px 0;">
             <button onclick="copyToClipboard()" id="copyBtn">Copy All Data</button>
             <button onclick="refreshData()">Refresh</button>
+            <button onclick="exportAsJSON()">Export JSON</button>
+            <button onclick="exportAsCSV()">Export CSV</button>
         </div>
         <pre id="diagnosticContent" style="font-family: monospace; line-height: 1.5;">Loading...</pre>
     </div>
@@ -66,25 +68,46 @@
                 // Parse browser name and version
                 let browserName = 'Unknown';
                 let browserVersion = 'Unknown';
+                let mobileStatus = 'Unknown';
 
-                if (ua.indexOf('Firefox') > -1) {
-                    browserName = 'Firefox';
-                    browserVersion = ua.match(/Firefox\/([0-9.]+)/)?.[1] || 'Unknown';
-                } else if (ua.indexOf('Edg') > -1) {
-                    browserName = 'Edge';
-                    browserVersion = ua.match(/Edg\/([0-9.]+)/)?.[1] || 'Unknown';
-                } else if (ua.indexOf('Chrome') > -1) {
-                    browserName = 'Chrome';
-                    browserVersion = ua.match(/Chrome\/([0-9.]+)/)?.[1] || 'Unknown';
-                } else if (ua.indexOf('Safari') > -1) {
-                    browserName = 'Safari';
-                    browserVersion = ua.match(/Version\/([0-9.]+)/)?.[1] || 'Unknown';
+                // Modern: User-Agent Client Hints
+                if (nav.userAgentData) {
+                     // Filter out generic brands like "Not A(Brand" and "Chromium" to find the specific browser
+                    const brands = nav.userAgentData.brands.filter(b => 
+                        !b.brand.includes('Not A(Brand') && 
+                        b.brand !== 'Chromium'
+                    );
+                    const brand = brands.length > 0 ? brands[0] : nav.userAgentData.brands[0];
+                    
+                    if (brand) {
+                        browserName = brand.brand;
+                        browserVersion = brand.version;
+                    }
+                    mobileStatus = nav.userAgentData.mobile ? 'Mobile' : 'Desktop';
+                } 
+                
+                // Fallback: User Agent String
+                if (browserName === 'Unknown') {
+                    if (ua.indexOf('Firefox') > -1) {
+                        browserName = 'Firefox';
+                        browserVersion = ua.match(/Firefox\/([0-9.]+)/)?.[1] || 'Unknown';
+                    } else if (ua.indexOf('Edg') > -1) {
+                        browserName = 'Edge';
+                        browserVersion = ua.match(/Edg\/([0-9.]+)/)?.[1] || 'Unknown';
+                    } else if (ua.indexOf('Chrome') > -1) {
+                        browserName = 'Chrome';
+                        browserVersion = ua.match(/Chrome\/([0-9.]+)/)?.[1] || 'Unknown';
+                    } else if (ua.indexOf('Safari') > -1) {
+                        browserName = 'Safari';
+                        browserVersion = ua.match(/Version\/([0-9.]+)/)?.[1] || 'Unknown';
+                    }
                 }
 
                 return {
                     'User Agent': ua,
                     'Browser': `${browserName} ${browserVersion}`,
-                    'Platform': nav.platform || 'Unknown',
+                    'Platform': nav.userAgentData?.platform || nav.platform || 'Unknown',
+                    'Mobile': mobileStatus !== 'Unknown' ? mobileStatus : 'Not Detected',
                     'OS': getOSInfo(),
                     'Language': nav.language || 'Unknown',
                     'Languages': nav.languages?.join(', ') || 'Unknown',
@@ -92,8 +115,7 @@
                     'Hardware Concurrency': nav.hardwareConcurrency || 'Not Available',
                     'Device Memory': nav.deviceMemory ? `${nav.deviceMemory} GB` : 'Not Available',
                     'Max Touch Points': nav.maxTouchPoints || 0,
-                    'Vendor': nav.vendor || 'Unknown',
-                    'Product': nav.product || 'Unknown'
+                    'Vendor': nav.vendor || 'Unknown'
                 };
             } catch (error) {
                 return { 'Error': error.message };
@@ -208,29 +230,47 @@
         // Get performance metrics
         function getPerformanceInfo() {
             try {
-                if (!window.performance || !window.performance.timing) {
-                    return { 'Performance API': 'Not Available' };
+                // Modern Level 2 API
+                const navEntry = performance.getEntriesByType?.("navigation")?.[0];
+                const timing = performance.timing; // Fallback
+                
+                if (!navEntry && (!window.performance || !timing)) {
+                     return { 'Performance API': 'Not Available' };
                 }
 
-                const timing = performance.timing;
-                const navigation = performance.navigation;
+                let pageLoadTime, dnsTime, tcpTime, tlsTime, ttfb, domLoad, navType, redirectCount;
 
-                const pageLoadTime = timing.loadEventEnd - timing.navigationStart;
-                const dnsTime = timing.domainLookupEnd - timing.domainLookupStart;
-                const tcpTime = timing.connectEnd - timing.connectStart;
-                const tlsTime = timing.secureConnectionStart > 0 ? timing.connectEnd - timing.secureConnectionStart : 'N/A (HTTP)';
-                const ttfb = timing.responseStart - timing.navigationStart;
-                const domLoad = timing.domContentLoadedEventEnd - timing.navigationStart;
+                if (navEntry) {
+                    pageLoadTime = navEntry.loadEventEnd - navEntry.startTime;
+                    dnsTime = navEntry.domainLookupEnd - navEntry.domainLookupStart;
+                    tcpTime = navEntry.connectEnd - navEntry.connectStart;
+                    tlsTime = navEntry.secureConnectionStart > 0 ? navEntry.connectEnd - navEntry.secureConnectionStart : 'N/A (HTTP)';
+                    ttfb = navEntry.responseStart - navEntry.startTime;
+                    domLoad = navEntry.domContentLoadedEventEnd - navEntry.startTime;
+                    navType = navEntry.type;
+                    redirectCount = navEntry.redirectCount;
+                } else {
+                    // Fallback
+                    const nav = performance.navigation;
+                    pageLoadTime = timing.loadEventEnd - timing.navigationStart;
+                    dnsTime = timing.domainLookupEnd - timing.domainLookupStart;
+                    tcpTime = timing.connectEnd - timing.connectStart;
+                    tlsTime = timing.secureConnectionStart > 0 ? timing.connectEnd - timing.secureConnectionStart : 'N/A (HTTP)';
+                    ttfb = timing.responseStart - timing.navigationStart;
+                    domLoad = timing.domContentLoadedEventEnd - timing.navigationStart;
+                    navType = nav ? ['Navigate', 'Reload', 'Back/Forward'][nav.type] || 'Unknown' : 'Not Available';
+                    redirectCount = nav?.redirectCount || 0;
+                }
 
                 return {
-                    'Page Load Time': pageLoadTime > 0 ? `${pageLoadTime} ms` : 'Calculating...',
-                    'DNS Lookup': dnsTime >= 0 ? `${dnsTime} ms` : 'Not Available',
-                    'TCP Connection': tcpTime >= 0 ? `${tcpTime} ms` : 'Not Available',
-                    'TLS Negotiation': typeof tlsTime === 'number' ? `${tlsTime} ms` : tlsTime,
-                    'Time to First Byte': ttfb > 0 ? `${ttfb} ms` : 'Not Available',
-                    'DOM Load': domLoad > 0 ? `${domLoad} ms` : 'Calculating...',
-                    'Navigation Type': navigation ? ['Navigate', 'Reload', 'Back/Forward'][navigation.type] || 'Unknown' : 'Not Available',
-                    'Redirect Count': navigation?.redirectCount || 0
+                    'Page Load Time': pageLoadTime > 0 ? `${Math.round(pageLoadTime)} ms` : 'Calculating...',
+                    'DNS Lookup': dnsTime >= 0 ? `${Math.round(dnsTime)} ms` : 'Not Available',
+                    'TCP Connection': tcpTime >= 0 ? `${Math.round(tcpTime)} ms` : 'Not Available',
+                    'TLS Negotiation': typeof tlsTime === 'number' ? `${Math.round(tlsTime)} ms` : tlsTime,
+                    'Time to First Byte': ttfb > 0 ? `${Math.round(ttfb)} ms` : 'Not Available',
+                    'DOM Load': domLoad > 0 ? `${Math.round(domLoad)} ms` : 'Calculating...',
+                    'Navigation Type': navType,
+                    'Redirect Count': redirectCount
                 };
             } catch (error) {
                 return { 'Error': error.message };
@@ -367,7 +407,7 @@
             };
         }
 
-        // Test DNS performance using DoH
+        // Test DNS performance using DoH (updated with DNSSEC check)
         async function testDNSPerformance() {
             try {
                 const controller = new AbortController();
@@ -375,7 +415,7 @@
                 const startTime = performance.now();
 
                 const response = await fetch(
-                    'https://cloudflare-dns.com/dns-query?name=cloudflare.com&type=A',
+                    'https://cloudflare-dns.com/dns-query?name=cloudflare.com&type=A&do=1',
                     {
                         headers: { 'Accept': 'application/dns-json' },
                         signal: controller.signal
@@ -391,12 +431,14 @@
                     return {
                         'DoH Query Time': `${queryTime} ms`,
                         'DoH Status': data.Status === 0 ? 'Working' : `Error (Status ${data.Status})`,
+                        'DNSSEC Validated': data.AD ? 'Yes' : 'No',
                         'Answers Received': data.Answer?.length || 0
                     };
                 } else {
                     return {
                         'DoH Query Time': 'Error',
                         'DoH Status': `HTTP ${response.status}`,
+                        'DNSSEC Validated': 'N/A',
                         'Answers Received': 'N/A'
                     };
                 }
@@ -404,9 +446,168 @@
                 return {
                     'DoH Query Time': error.name === 'AbortError' ? 'Timeout (>5s)' : 'Error',
                     'DoH Status': error.message || 'Failed',
+                    'DNSSEC Validated': 'N/A',
                     'Answers Received': 'N/A'
                 };
             }
+        }
+
+
+        // Test Google DNS performance and capabilities
+        async function testGoogleDNS() {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const startTime = performance.now();
+
+                const response = await fetch(
+                    'https://dns.google/resolve?name=cloudflare.com&type=A&do=1',
+                    { signal: controller.signal }
+                );
+
+                clearTimeout(timeoutId);
+                const endTime = performance.now();
+                const queryTime = Math.round(endTime - startTime);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        'Query Time': `${queryTime} ms`,
+                        'Status': data.Status === 0 ? 'Success (NOERROR)' : `DNS Error ${data.Status}`,
+                        'DNSSEC Validated': data.AD ? 'Yes' : 'No',
+                        'Authoritative Server': data.Comment || 'Cached response',
+                        'Answers Received': data.Answer?.length || 0,
+                        'Note': 'Metadata limited (no data center/TLS info available)'
+                    };
+                } else {
+                    return {
+                        'Query Time': `${queryTime} ms`,
+                        'Status': `HTTP ${response.status}`,
+                        'Note': 'Request failed'
+                    };
+                }
+            } catch (error) {
+                return {
+                    'Query Time': error.name === 'AbortError' ? 'Timeout (>5s)' : 'Error',
+                    'Status': error.message || 'Failed',
+                    'Note': 'Unable to reach Google DNS'
+                };
+            }
+        }
+
+        // Test AdGuard DNS performance and capabilities
+        async function testAdGuardDNS() {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const startTime = performance.now();
+
+                const response = await fetch(
+                    'https://dns.adguard-dns.com/dns-query?name=cloudflare.com&type=A&do=1',
+                    {
+                        headers: { 'Accept': 'application/dns-json' },
+                        signal: controller.signal
+                    }
+                );
+
+                clearTimeout(timeoutId);
+                const endTime = performance.now();
+                const queryTime = Math.round(endTime - startTime);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        'Query Time': `${queryTime} ms`,
+                        'Status': data.Status === 0 ? 'Success (NOERROR)' : `DNS Error ${data.Status}`,
+                        'DNSSEC Validated': data.AD ? 'Yes' : 'No',
+                        'Answers Received': data.Answer?.length || 0,
+                        'Note': 'Privacy-focused DNS with ad/tracker blocking'
+                    };
+                } else {
+                    return {
+                        'Query Time': `${queryTime} ms`,
+                        'Status': `HTTP ${response.status}`,
+                        'DNSSEC Validated': 'N/A',
+                        'Note': 'Request failed'
+                    };
+                }
+            } catch (error) {
+                return {
+                    'Query Time': error.name === 'AbortError' ? 'Timeout (>5s)' : 'Error',
+                    'Status': error.message || 'Failed',
+                    'DNSSEC Validated': 'N/A',
+                    'Note': 'Unable to reach AdGuard DNS'
+                };
+            }
+        }
+
+        // Detect DNS leaks via multi-resolver testing
+        async function detectDNSLeaks() {
+            const tests = [
+                { name: 'Primary Resolver (Akamai)', query: 'whoami.ds.akahelp.net' },
+                { name: 'Secondary Resolver (Google)', query: 'o-o.myaddr.l.google.com' },
+                { name: 'IPv6 Resolver', query: 'whoami.ipv6.akahelp.net' }
+            ];
+
+            const results = {};
+            const resolverIPs = [];
+
+            for (const test of tests) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                    const response = await fetch(
+                        `https://dns.google/resolve?name=${test.query}&type=TXT`,
+                        { signal: controller.signal }
+                    );
+
+                    clearTimeout(timeoutId);
+                    const data = await response.json();
+
+                    if (data.Status === 0 && data.Answer?.length > 0) {
+                        // Parse TXT record (format: "ns: 1.2.3.4 ecs: 1.2.3.0/24")
+                        const txtData = data.Answer[0].data.replace(/"/g, '');
+                        const nsMatch = txtData.match(/ns:\s*([\d.:a-fA-F]+)/);
+
+                        if (nsMatch) {
+                            const resolverIP = nsMatch[1];
+                            results[test.name] = resolverIP;
+                            resolverIPs.push(resolverIP);
+
+                            // Also extract ECS if present
+                            const ecsMatch = txtData.match(/ecs:\s*([\d./a-fA-F:]+)/);
+                            if (ecsMatch) {
+                                results[`${test.name} (Client Subnet)`] = ecsMatch[1];
+                            }
+                        } else {
+                            results[test.name] = 'Unable to parse';
+                        }
+                    } else if (test.name.includes('IPv6')) {
+                        results[test.name] = 'No IPv6 DNS detected';
+                    } else {
+                        results[test.name] = 'No response';
+                    }
+                } catch (error) {
+                    results[test.name] = error.name === 'AbortError' ? 'Timeout (>5s)' : 'Error';
+                }
+            }
+
+            // Analyze results for leaks
+            const validResolvers = resolverIPs.filter(ip => ip && !ip.includes('Error'));
+            const uniqueResolvers = [...new Set(validResolvers)];
+
+            if (uniqueResolvers.length === 0) {
+                results['Analysis'] = 'Unable to determine (all tests failed)';
+            } else if (uniqueResolvers.length === 1) {
+                results['Analysis'] = 'No leak detected (consistent resolver across tests)';
+                results['Your DNS Resolver'] = uniqueResolvers[0];
+            } else {
+                results['Analysis'] = `DNS Leak Detected (${uniqueResolvers.length} different resolvers)`;
+                results['Resolvers Found'] = uniqueResolvers.join(', ');
+            }
+
+            return results;
         }
 
         // Update header with timestamp
@@ -450,10 +651,13 @@
             document.getElementById('diagnosticContent').textContent = text;
 
             // Fetch all async data in parallel
-            const [ipAddress, dnsInfo, dnsPerf] = await Promise.all([
+            const [ipAddress, dnsInfo, dnsPerf, googleDNS, adguardDNS, dnsLeak] = await Promise.all([
                 getIPAddress(),
                 getDNSResolverInfo(),
-                testDNSPerformance()
+                testDNSPerformance(),
+                testGoogleDNS(),
+                testAdGuardDNS(),
+                detectDNSLeaks()
             ]);
 
             // Update Network Information with IP
@@ -463,7 +667,16 @@
             diagnosticData['DNS Resolver Connectivity'] = dnsInfo.results;
             diagnosticData['DNS Protocol & Encryption'] = detectDNSEncryption(dnsInfo.traceData, dnsInfo.results);
             diagnosticData['DNS Network Path'] = parseCloudflareTrace(dnsInfo.traceData);
-            diagnosticData['DNS Performance'] = dnsPerf;
+
+            // Grouped DNS Benchmarks
+            diagnosticData['DNS Provider Benchmark'] = {
+                'Cloudflare (1.1.1.1)': `${dnsPerf['DoH Query Time']} (Status: ${dnsPerf['DoH Status']}, DNSSEC: ${dnsPerf['DNSSEC Validated']})`,
+                'Google (8.8.8.8)': `${googleDNS['Query Time']} (Status: ${googleDNS['Status']}, DNSSEC: ${googleDNS['DNSSEC Validated']})`,
+                'AdGuard DNS': `${adguardDNS['Query Time']} (Status: ${adguardDNS['Status']}, DNSSEC: ${adguardDNS['DNSSEC Validated']})`
+            };
+
+            // Add DNS Leak Detection
+            diagnosticData['DNS Leak Detection'] = dnsLeak;
 
             // Re-render all sections with DNS data
             text = '';
@@ -475,25 +688,54 @@
             updateTimestamp();
         }
 
-        // Copy all data to clipboard
-        async function copyToClipboard() {
-            let text = 'BROWSER & NETWORK DIAGNOSTIC REPORT\n';
-            text += '=' .repeat(60) + '\n';
-            text += `Generated: ${new Date().toLocaleString()}\n\n`;
+        // Export data as JSON file
+        function exportAsJSON() {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const json = JSON.stringify(diagnosticData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `diagnostic-report-${timestamp}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Export data as CSV file
+        function exportAsCSV() {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            let csv = 'Section,Key,Value\n';
 
             for (const [section, data] of Object.entries(diagnosticData)) {
-                text += `\n${section}\n`;
-                text += '-'.repeat(section.length) + '\n';
                 for (const [key, value] of Object.entries(data)) {
-                    // Strip HTML for plain text
-                    const plainValue = typeof value === 'boolean'
-                        ? (value ? 'Enabled' : 'Disabled')
-                        : (value === null || value === undefined ? 'Not Available' : value);
-                    text += `${key}: ${plainValue}\n`;
+                    const plainValue = formatValue(value);
+                    // Escape quotes and wrap in quotes for CSV
+                    const escapedValue = String(plainValue).replace(/"/g, '""');
+                    csv += `"${section}","${key}","${escapedValue}"\n`;
                 }
             }
 
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `diagnostic-report-${timestamp}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Copy all data to clipboard
+        async function copyToClipboard() {
             try {
+                const header = document.getElementById('header').textContent;
+                const content = document.getElementById('diagnosticContent').textContent;
+                // Combine header and content, ensuring proper spacing
+                const text = header + '\n' + content;
+
                 await navigator.clipboard.writeText(text);
                 const btn = document.getElementById('copyBtn');
                 const originalText = btn.textContent;
