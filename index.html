@@ -311,15 +311,46 @@
             }
         }
 
-        // Get IP address from external API
+        // Get IP address from external API with fallback
         async function getIPAddress() {
+            // Primary: ipify
             try {
-                const response = await fetch('https://api.ipify.org?format=json', { timeout: 5000 });
-                const data = await response.json();
-                return data.ip;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout for primary
+                const response = await fetch('https://api.ipify.org?format=json', { 
+                    signal: controller.signal 
+                });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.ip;
+                }
             } catch (error) {
-                return 'Unable to fetch (blocked or offline)';
+                // Ignore error and try fallback
             }
+
+            // Fallback: Cloudflare Trace (highly reliable)
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const response = await fetch('https://1.1.1.1/cdn-cgi/trace', {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const text = await response.text();
+                    const ipMatch = text.match(/^ip=(.+)$/m);
+                    if (ipMatch) {
+                        return ipMatch[1];
+                    }
+                }
+            } catch (error) {
+                // Fallback failed too
+            }
+
+            return 'Unable to fetch (blocked or offline)';
         }
 
         // Get DNS resolver connectivity information
