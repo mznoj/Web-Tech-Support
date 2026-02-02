@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Browser and Network Diagnostic Tool for debugging access issues">
-    <title>Browser & Network Diagnostic Tool</title>
+    <title>Browser & Network Diagnostic Tool v1.0.0</title>
     <style>
         body {
             font-family: monospace;
@@ -43,6 +43,9 @@
     </div>
 
     <script>
+        // Version
+        const TOOL_VERSION = '1.0.0';
+
         // Global data storage
         let diagnosticData = {};
 
@@ -297,6 +300,7 @@
         function getAdditionalDetails() {
             try {
                 return {
+                    'Diagnostic Tool Version': TOOL_VERSION,
                     'Current URL': window.location.href,
                     'Referrer': document.referrer || 'Direct/No Referrer',
                     'Document Mode': document.compatMode,
@@ -646,6 +650,7 @@
             const now = new Date();
             let header = 'BROWSER & NETWORK DIAGNOSTIC REPORT\n';
             header += '='.repeat(60) + '\n';
+            header += `Version: ${TOOL_VERSION}\n`;
             header += `Generated: ${now.toLocaleString()}\n`;
             document.getElementById('header').textContent = header;
         }
