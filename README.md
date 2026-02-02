@@ -1,6 +1,6 @@
 # Browser & Network Diagnostic Tool
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Live Site:** https://web-tech-support.mattz.cc
 
 A comprehensive browser and network diagnostic tool for troubleshooting web access issues and gathering system information. All diagnostics run client-side in the browser with no server-side processing.
