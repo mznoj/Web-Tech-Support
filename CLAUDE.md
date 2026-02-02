@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a single-file browser diagnostic tool (`index.html`) that displays browser, network, and system information in plain text format. The tool is designed for tech support and troubleshooting web access issues.
 
+**Current Version:** 1.0.0
+**Live URLs:**
+- Production: https://web-tech-support.pages.dev
+- Custom Domain: https://web-tech-support.mattz.cc
+
+**Deployment:** Automatic via GitHub Actions on every push to `main`
+
 ## Architecture
 
 ### Single-File Structure
@@ -23,7 +30,8 @@ The entire application is contained in `index.html` with three main sections:
    - `<pre id="diagnosticContent">` - Main diagnostic output area
    - `<noscript>` warning for JavaScript-disabled browsers
 
-3. **JavaScript Diagnostic Engine** (lines 45-807)
+3. **JavaScript Diagnostic Engine** (lines 45-810)
+   - Version constant: `TOOL_VERSION` (line 46)
    - Data collection functions (7 base + 5 DNS categories)
    - Plain text rendering system
    - Async IP address and DNS diagnostics fetching
@@ -40,7 +48,7 @@ Each function returns an object with key-value pairs of diagnostic information:
 - `getNetworkInfo()` - Online status, connection type, protocol, hostname
 - `getPerformanceInfo()` - Page load metrics using Navigation Timing Level 2 API, DNS, TCP, TLS, TTFB, DOM load times
 - `getSecurityInfo()` - Protocol, secure context, cross-origin isolation, referrer policy, mixed content detection
-- `getAdditionalDetails()` - URL, referrer, document mode, timezone, API support
+- `getAdditionalDetails()` - Tool version, URL, referrer, document mode, timezone, API support
 
 **Async Diagnostics:**
 - `getIPAddress()` - Fetches public IP with fallback (primary: api.ipify.org, fallback: Cloudflare trace)
@@ -64,18 +72,35 @@ Each function returns an object with key-value pairs of diagnostic information:
 
 - `formatValue(value)` - Converts values to plain text ("Enabled", "Disabled", "Not Available")
 - `createInfoSection(title, data)` - Generates plain text section with dashes under title
-- `updateTimestamp()` - Creates header with title, separator line (60 equals signs), and timestamp
+- `updateTimestamp()` - Creates header with title, version number, separator line (60 equals signs), and timestamp
 - `renderAllInfo()` - Orchestrates data collection, rendering, and all async diagnostics (IP + DNS tests)
 - `copyToClipboard()` - Copies full report (header + content) to clipboard with visual feedback
 - `refreshData()` - Triggers complete re-collection and re-rendering of all diagnostics
 
 **Format Convention:**
 ```
+BROWSER & NETWORK DIAGNOSTIC REPORT
+============================================================
+Version: 1.0.0
+Generated: [timestamp]
+
 Section Title
 -------------
 Key: Value
 Key: Value
 ```
+
+### Version Management
+
+**Version Constant:** `TOOL_VERSION` (line 46)
+- Current version: `1.0.0`
+- Displayed in: page title, report header, Additional Details section
+- Included in: JSON/CSV exports
+
+**To Update Version:**
+1. Change `TOOL_VERSION` constant (line 46)
+2. Update version in page title (line 7)
+3. Commit and push - GitHub Actions will auto-deploy
 
 ## Making Changes
 
@@ -124,6 +149,7 @@ The pattern uses timeouts with AbortController:
 Open `index.html` directly in a browser (no build step required).
 
 **Test checklist:**
+- Version number displays in page title and report header
 - All 12 diagnostic sections display correctly (7 base + 5 DNS)
   1. Browser Information
   2. Screen & Display
@@ -131,7 +157,7 @@ Open `index.html` directly in a browser (no build step required).
   4. Network Information (includes async IP address)
   5. Performance Metrics
   6. Security Context
-  7. Additional Details
+  7. Additional Details (includes Diagnostic Tool Version)
   8. DNS Resolver Connectivity
   9. DNS Protocol & Encryption
   10. DNS Network Path
@@ -174,6 +200,8 @@ Open `index.html` directly in a browser (no build step required).
 **Build/Deploy:**
 - No build tools, frameworks, or npm packages required
 - Pure HTML/CSS/JavaScript - deployable to any static host
+- GitHub Actions for CI/CD (`.github/workflows/deploy.yml`)
+- Cloudflare Pages for hosting
 
 ## Privacy & Security
 
@@ -189,3 +217,74 @@ Open `index.html` directly in a browser (no build step required).
 - Safe to share output (contains no secrets, only browser/network metadata)
 - All DNS tests use timeouts (3-5 seconds) to prevent long waits on blocked connections
 - Exported JSON/CSV files contain same data as displayed (no additional sensitive info)
+
+## Deployment
+
+### Automatic Deployment via GitHub Actions
+
+The project uses GitHub Actions for continuous deployment to Cloudflare Pages.
+
+**Workflow File:** `.github/workflows/deploy.yml`
+
+**Trigger Events:**
+- Push to `main` branch → Production deployment
+- Pull requests → Preview deployments
+
+**Deployment Process:**
+1. GitHub Actions detects push to `main`
+2. Checks out repository code
+3. Uses `cloudflare/pages-action@v1` to deploy
+4. Uploads static files to Cloudflare Pages
+5. Deployment completes in ~30 seconds
+
+**Configuration:**
+- **Project Name:** `web-tech-support`
+- **Account ID:** Stored in workflow file
+- **API Token:** Stored in GitHub Secrets (`CLOUDFLARE_API_TOKEN`)
+- **Directory:** `.` (root directory)
+- **No build command** - static HTML deployment
+
+**Live URLs:**
+- Production: https://web-tech-support.pages.dev
+- Custom Domain: https://web-tech-support.mattz.cc
+
+**Manual Deployment (if needed):**
+```bash
+# Set environment variables
+export CLOUDFLARE_API_TOKEN="<token>"
+export CLOUDFLARE_ACCOUNT_ID="04083e374d8ab0c8b215859b8dea0e8b"
+
+# Deploy using Wrangler CLI
+wrangler pages deploy . --project-name=web-tech-support --branch=main
+```
+
+**Monitoring Deployments:**
+```bash
+# View recent deployments
+gh run list --limit 5
+
+# Watch current deployment
+gh run watch
+
+# View deployment logs
+gh run view --log
+```
+
+### Deployment Checklist
+
+When making changes that should be deployed:
+1. Test locally by opening `index.html` in browser
+2. Update `TOOL_VERSION` if making significant changes
+3. Commit changes with descriptive message
+4. Push to `main` branch
+5. GitHub Actions automatically deploys
+6. Verify deployment at live URLs
+7. Check GitHub Actions tab for deployment status
+
+### Rollback Procedure
+
+If a deployment introduces issues:
+1. Go to GitHub Actions tab
+2. Find the last working deployment
+3. Re-run that workflow, OR
+4. Use `git revert` and push to trigger new deployment

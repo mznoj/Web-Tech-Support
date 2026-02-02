@@ -1,8 +1,47 @@
 # Cloudflare Pages Deployment Guide
 
-This guide walks you through connecting this project to Cloudflare Pages for automatic deployments from GitHub.
+This guide documents the deployment setup for the Browser & Network Diagnostic Tool.
 
-## Prerequisites
+## Current Deployment Status
+
+✅ **ACTIVE**: Automatic deployment via GitHub Actions
+- **Live URLs**:
+  - Production: https://web-tech-support.pages.dev
+  - Custom Domain: https://web-tech-support.mattz.cc
+- **Method**: GitHub Actions workflow (`.github/workflows/deploy.yml`)
+- **Trigger**: Every push to `main` branch
+- **Deploy Time**: ~30 seconds
+
+## Deployment Methods
+
+### Method 1: GitHub Actions (Current - Recommended)
+
+The project is currently deployed using GitHub Actions, which provides:
+- Automatic deployment on every push to `main`
+- Preview deployments for pull requests
+- Full control via code (Infrastructure as Code)
+- Easy monitoring via `gh` CLI
+
+**How it works:**
+1. Push code to `main` branch
+2. GitHub Actions workflow triggers automatically
+3. Uses `cloudflare/pages-action@v1` to deploy
+4. Updates live site in ~30 seconds
+
+**Monitor deployments:**
+```bash
+gh run list          # View recent deployments
+gh run watch         # Watch current deployment
+gh run view --log    # View deployment logs
+```
+
+No additional setup needed - it's already working!
+
+### Method 2: Cloudflare Dashboard (Alternative)
+
+You can also connect GitHub directly via the Cloudflare dashboard for native Git integration. This is optional since GitHub Actions is already handling deployments.
+
+## Prerequisites (for Dashboard Method)
 
 - A Cloudflare account (free tier works fine)
 - GitHub repository: `https://github.com/mznoj/Web-Tech-Support.git`
